@@ -1,7 +1,6 @@
 import numpy as np
 import heapq
 import collections
-import pdb
 
 def watershed_g(graph_matrix: np.ndarray, values_n: np.ndarray) -> np.ndarray:
     """
