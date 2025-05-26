@@ -1,0 +1,13 @@
+name: watershed
+channels:
+  - defaults
+dependencies:
+  - python
+  - numpy
+  - scikit-image
+  - pip
+  - pip:
+    - notebook
+    - matplotlib
+    - pytest
+    - networkx
