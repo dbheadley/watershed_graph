@@ -5,25 +5,97 @@ import networkx
 from watershed import watershed_g, watershed_gt
 from test_graphs import adj_graphs
 
-def interpmv(x_target, xi_known, yi_known_T):
-    # x_target: 1D array of target time points (e.g., np.arange(6))
-    # xi_known: 1D array of known time points (e.g., np.array([0, 5]))
-    # yi_known_T: 2D array (Nodes, KnownTimePoints) of known values (transposed from notebook's yi)
-    # Returns: 2D array (TimePoints, Nodes)
-    y_interpolated_T_N = np.zeros((x_target.size, yi_known_T.shape[0]))
-    for i in range(yi_known_T.shape[0]): # Iterate over nodes
-        y_interpolated_T_N[:, i] = np.interp(x_target, xi_known, yi_known_T[i, :])
-    return y_interpolated_T_N
+def interpmv(x, xi, yi):
+    """
+    Interpolate the values of yi at the points xi to the points x.
+
+    Parameters
+    ----------
+    x : array-like, shape (n)
+        The points at which to interpolate the values.
+    xi : array-like, shape (n, m)
+        The points at which the values are known.
+    yi : array-like, shape (n, m)
+        The values at the points xi.
+    Returns
+    -------
+    y : array-like
+        The interpolated values at the points x.
+    """
+    y = np.zeros((x.size, yi.shape[1]))
+    for i in range(yi.shape[1]): # Iterate over nodes
+        y[:, i] = np.interp(x, xi, yi[:, i])
+    return y
+
+def graph_flow(graph, val_list):
+    """
+    Flow the values of the graph along its edges.
+
+    Parameters
+    ----------
+    graph : array-like, shape (n, n)
+        The graph to flow the values along.
+    val_list : list of array-like, shape (n)
+        The values to flow along the graph.
+    Returns
+    -------
+    y : array-like, shape (n, m)
+        The flowed values at the points x.
+    """
+    y = np.zeros(val_list.shape)
+    graph_n = graph/np.sum(graph, axis=1)
+    y[0,:] = val_list[0, :]
+    for i in range(1,val_list.shape[0]):
+        y[i,:] = y[i-1,:]@graph_n + val_list[i,:]
+    return y
+
+def run_test_set_g(graph, values, labels):
+    """
+    Run a test set for the watershed_g function.
+
+    Parameters
+    ----------
+    graph : array-like, shape (n, n)
+        The graph to test.
+    values : list of array-like, shape (n)
+        The values to test.
+    labels : list of array-like, shape (n)
+        The expected labels for the values.
+    """
+    for ind, (val, label) in enumerate(zip(values, labels)):
+        result = watershed_g(graph, val)
+
+        err_msg = f"Test {ind} failed for values: {val}\n Expected: {label}\n Got: {result}"
+        np.testing.assert_array_equal(result, label, err_msg=err_msg)
+
+def run_test_set_gt(graph, values, labels):
+    """
+    Run a test set for the watershed_gt function.
+
+    Parameters
+    ----------
+    graph : array-like, shape (n, n)
+        The graph to test.
+    values : list of array-like, shape (n, m)
+        The values to test.
+    labels : list of array-like, shape (n, m)
+        The expected labels for the values.
+    """
+    for ind, (val, label) in enumerate(zip(values, labels)):
+        result = watershed_gt(graph, val)
+
+        err_msg = f"Test {ind} failed for values: {val}\n Expected: {label}\n Got: {result}"
+        np.testing.assert_array_equal(result, label, err_msg=err_msg)
 
 class TestWatershedG(unittest.TestCase):
     def test_line_graph_static(self):
         graph_line = adj_graphs['line']
         node_values_list = [
-            np.array([-1, -1, -1, -1, 0, 0]),
-            np.array([-1, -2, -1, 0, -1, -2]),
-            np.array([-1, 0, -1, 0, -1, 0]),
-            np.array([-1, -2, -3, -2, -1, 0]),
-            np.array([3, 2, 1, 0, -1, -2])
+            -np.array([1, 1, 1, 1, 0, 0]),
+            -np.array([1, 2, 1, 0, 1, 2]),
+            -np.array([1, 0, 1, 0, 1, 0]),
+            -np.array([1, 2, 3, 2, 1, 0]),
+            -np.array([-3, -2, -1, 0, 1, 2])
         ]
         expected_labels_list = [
             np.array([1, 1, 1, 1, 1, 1]),
@@ -33,36 +105,32 @@ class TestWatershedG(unittest.TestCase):
             np.array([1, 1, 1, 1, 1, 1])
         ]
 
-        for node_values, expected_labels in zip(node_values_list, expected_labels_list):
-            labels = watershed_g(graph_line, node_values)
-            np.testing.assert_array_equal(labels, expected_labels)
+        run_test_set_g(graph_line, node_values_list, expected_labels_list)
 
     def test_circle_graph_static(self):
         graph_circle = adj_graphs['circle']
         node_values_list = [
-            np.array([-1, -2, -3, -2, -1, 0]),
-            np.array([-1, 0, -1, 0, -1, 0]),
-            np.array([-1, -1, -1, -1, 0, 0]),
-            np.array([-1, -2, -1, 0, -1, -2])
+            -np.array([1, 2, 3, 2, 1, 0]),
+            -np.array([1, 0, 1, 0, 1, 0]),
+            -np.array([1, 1, 1, 1, 0, 0]),
+            -np.array([1, 2, 1, 0, 1, 2])
         ]
         expected_labels_list = [
             np.array([1, 1, 1, 1, 1, 1]),
-            np.array([1, 1, 2, 2, 3, 1]),  # Adjusted based on typical watershed behavior with multiple minima
+            np.array([1, 1, 2, 2, 3, 1]),
             np.array([1, 1, 1, 1, 1, 1]),
             np.array([1, 1, 1, 1, 2, 2])
         ]
 
-        for node_values, expected_labels in zip(node_values_list, expected_labels_list):
-            labels = watershed_g(graph_circle, node_values)
-            np.testing.assert_array_equal(labels, expected_labels)
+        run_test_set_g(graph_circle, node_values_list, expected_labels_list)
 
     def test_tree_graph_static(self):
         graph_tree_adj = adj_graphs['tree9']
 
         node_values_list = [
-            np.array([0, 0, -1, 0, -2, 0, 0, -1, -3]),
-            np.array([-9, -8, -7, -6, -5, -4, -3, -2, -1]),
-            np.array([-1, -2, -3, -4, -5, -6, -7, -8, -9])
+            -np.array([0, 0, 1, 0, 2, 0, 0, 1, 3]),
+            -np.array([9, 8, 7, 6, 5, 4, 3, 2, 1]),
+            -np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])
         ]
         expected_labels_list = [
             np.array([1, 1, 1, 1, 1, 1, 1, 1, 1]),
@@ -70,185 +138,297 @@ class TestWatershedG(unittest.TestCase):
             np.array([1, 3, 1, 3, 1, 4, 3, 2, 1])
         ]
 
-        for node_values, expected_labels in zip(node_values_list, expected_labels_list):
-            labels = watershed_g(graph_tree_adj, node_values)
-            np.testing.assert_array_equal(labels, expected_labels)
+        run_test_set_g(graph_tree_adj, node_values_list, expected_labels_list)
 
     def test_grid_graph_static(self):
         graph_grid = adj_graphs['grid'] # 36 nodes
         node_values_list = [
-            -np.array([1,2,3,4,5,6, 2,3,4,5,6,7, 3,4,5,6,7,8, 4,5,6,7,8,9, 5,6,7,8,9,10, 6,7,8,9,10,11], dtype=float),
-            -np.array([0,1,2,1,0,0, 1,2,3,2,1,0, 2,3,4,3,2,1, 2,3,4,3,2,1, 1,2,3,2,1,0, 0,1,2,1,0,0]),
-            -np.array([4,3,2,1,0,0, 3,2,1,0,0,0, 2,1,0,0,0,1, 1,0,0,0,1,2, 0,0,0,1,2,3, 0,0,1,2,3,4])
+            -np.array([1,2,3,4,5,6, 
+                       2,3,4,5,6,7, 
+                       3,4,5,6,7,8, 
+                       4,5,6,7,8,9, 
+                       5,6,7,8,9,10, 
+                       6,7,8,9,10,11], dtype=float),
+            -np.array([0,1,2,1,0,0, 
+                       1,2,3,2,1,0, 
+                       2,3,4,3,2,1, 
+                       2,3,4,3,2,1, 
+                       1,2,3,2,1,0, 
+                       0,1,2,1,0,0]),
+            -np.array([4,3,2,1,0,0, 
+                       3,2,1,0,0,0, 
+                       2,1,0,0,0,1, 
+                       1,0,0,0,1,2, 
+                       0,0,0,1,2,3, 
+                       0,0,1,2,3,4])
         ]
         expected_labels_list = [
             np.ones(36, dtype=int),
             np.ones(36, dtype=int),
-            np.array([1,1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,2,2,1,1,1,2,2,2,1,1,2,2,2,2,1,2,2,2,2,2])
+            np.array([1,1,1,1,1,1,
+                      1,1,1,1,1,2,
+                      1,1,1,1,2,2,
+                      1,1,1,2,2,2,
+                      1,1,2,2,2,2,
+                      1,2,2,2,2,2])
         ]
 
-        for node_values, expected_labels in zip(node_values_list, expected_labels_list):
-            labels = watershed_g(graph_grid, node_values)
-            np.testing.assert_array_equal(labels, expected_labels)
+        run_test_set_g(graph_grid, node_values_list, expected_labels_list)
 
 class TestWatershedGT(unittest.TestCase):
     def test_line_graph_temporal(self):
         graph_line = adj_graphs['line']
         xi = np.array([0, 5])
-        x_target = np.arange(6)
+        x = np.arange(6)
+
+        node_values_list = []
+        expected_labels_list = []
 
         # Test Case 1
-        yi_known_T_1 = -np.array([[3,2,1,0,0,0], [0,0,0,0,0,0]]).T
-        val_tn_1 = interpmv(x_target, xi, yi_known_T_1)
-        expected_labels_tn_1 = np.ones((6,6), dtype=int)
-        labels_tn_1 = watershed_gt(graph_line, val_tn_1)
-        np.testing.assert_array_equal(labels_tn_1, expected_labels_tn_1)
+        yi_1 = -np.array([[3,2,1,0,0,0], [0,0,0,0,0,0]])
+        node_values_list.append(interpmv(x, xi, yi_1))
+        expected_labels_list.append(np.ones((6,6), dtype=int))
+
+        # Test Case 2
+        node_values_list.append(node_values_list[-1].T)
+        expected_labels_list.append(np.ones((6,6), dtype=int))
 
         # Test Case 3
-        yi_known_T_3 = -np.array([[3,2,1,0,0,0], [0,0,0,1,2,3]]).T
-        val_tn_3 = interpmv(x_target, xi, yi_known_T_3)
-        expected_labels_tn_3 = np.array([[1,1,1,1,2,1], [1,1,1,1,2,1], [1,1,1,2,2,1], [1,1,1,2,2,2], [2,1,2,2,2,2], [2,1,2,2,2,2]])
-        labels_tn_3 = watershed_gt(graph_line, val_tn_3)
-        np.testing.assert_array_equal(labels_tn_3, expected_labels_tn_3)
+        yi_3 = -np.array([[3,2,1,0,0,0], [0,0,0,1,2,3]])
+        node_values_list.append(interpmv(x, xi, yi_3))
+        expected_labels_list.append(np.array([[1,1,1,1,2,2], 
+                                         [1,1,1,1,2,2], 
+                                         [1,1,1,2,2,2], 
+                                         [1,1,1,2,2,2], 
+                                         [1,1,2,2,2,2], 
+                                         [1,1,2,2,2,2]]))
 
         # Test Case 4
-        yi_known_T_4 = -np.array([[3,2,1,0,0,0], [0,1,2,1,2,3]]).T
-        val_tn_4 = interpmv(x_target, xi, yi_known_T_4)
-        expected_labels_tn_4 = np.array([[1,1,1,1,2,1], [1,1,1,1,2,1], [1,1,1,1,2,1], [1,1,3,3,2,2], [2,3,3,3,2,2], [2,3,3,3,2,2]])
-        labels_tn_4 = watershed_gt(graph_line, val_tn_4)
-        np.testing.assert_array_equal(labels_tn_4, expected_labels_tn_4)
+        yi_4 = -np.array([[3,2,1,0,0,0], [0,1,2,1,2,3]])
+        node_values_list.append(interpmv(x, xi, yi_4))
+        expected_labels_list.append(np.array([[1,1,1,1,2,2], 
+                                         [1,1,1,1,2,2], 
+                                         [1,1,1,1,2,2], 
+                                         [1,1,3,3,2,2], 
+                                         [1,3,3,3,2,2], 
+                                         [3,3,3,3,2,2]]))
 
         # Test Case 5
-        val_tn_5 = -np.eye(6)
-        expected_labels_tn_5 = np.ones((6,6), dtype=int)
-        labels_tn_5 = watershed_gt(graph_line, val_tn_5)
-        np.testing.assert_array_equal(labels_tn_5, expected_labels_tn_5)
+        node_values_list.append(-np.eye(6))
+        expected_labels_list.append(np.ones((6,6), dtype=int))
 
         # Test Case 6
-        val_tn_6 = -np.eye(6) + -np.eye(6, k=1)
-        expected_labels_tn_6 = np.ones((6,6), dtype=int)
-        labels_tn_6 = watershed_gt(graph_line, val_tn_6)
-        np.testing.assert_array_equal(labels_tn_6, expected_labels_tn_6)
+        node_values_list.append(-np.eye(6) - np.eye(6, k=1))
+        expected_labels_list.append(np.ones((6,6), dtype=int))
 
         # Test Case 7
-        val_tn_7 = -np.eye(6) + -np.eye(6, k=3)
-        expected_labels_tn_7 = np.array([[1,1,2,2,2,1], [1,1,1,2,2,2], [2,1,1,1,2,2], [2,1,1,1,1,2], [1,1,1,1,1,1], [1,1,1,1,1,1]])
-        labels_tn_7 = watershed_gt(graph_line, val_tn_7)
-        np.testing.assert_array_equal(labels_tn_7, expected_labels_tn_7)
+        node_values_list.append(-np.eye(6) - np.eye(6, k=3))
+        expected_labels_list.append(np.array([[1,1,2,2,2,2], 
+                                         [1,1,1,2,2,2], 
+                                         [1,1,1,1,2,2], 
+                                         [1,1,1,1,1,2], 
+                                         [1,1,1,1,1,1], 
+                                         [1,1,1,1,1,1]]))
 
         # Test Case 8
-        val_tn_8 = -np.eye(6, k=-3) + -np.eye(6, k=3)
-        expected_labels_tn_8 = np.ones((6,6), dtype=int)
-        labels_tn_8 = watershed_gt(graph_line, val_tn_8)
-        np.testing.assert_array_equal(labels_tn_8, expected_labels_tn_8)
+        node_values_list.append(-np.eye(6, k=-3) - np.eye(6, k=3))
+        expected_labels_list.append(np.array([[1,1,1,1,1,1], 
+                                         [2,1,1,1,1,1], 
+                                         [2,2,1,1,1,1], 
+                                         [2,2,2,1,1,1], 
+                                         [2,2,2,2,1,1], 
+                                         [2,2,2,2,2,1]]))
 
         # Test Case 9
-        val_tn_9 = -np.eye(6,k=-3) + -np.eye(6,k=3) + -np.eye(6)
-        expected_labels_tn_9 = np.array([[1,1,2,2,2,1], [1,1,1,2,2,2], [2,1,1,1,2,2], [2,2,1,1,1,2], [2,2,2,1,1,1], [1,2,2,2,1,1]])
-        labels_tn_9 = watershed_gt(graph_line, val_tn_9)
-        np.testing.assert_array_equal(labels_tn_9, expected_labels_tn_9)
+        node_values_list.append(-np.eye(6,k=-3) - np.eye(6,k=3) - np.eye(6))
+        expected_labels_list.append(np.array([[1,1,2,2,2,2], 
+                                         [1,1,1,2,2,2], 
+                                         [3,1,1,1,2,2], 
+                                         [3,3,1,1,1,2], 
+                                         [3,3,3,1,1,1], 
+                                         [3,3,3,3,1,1]]))
 
         # Test Case 10
-        val_tn_10 = np.zeros((6,6))
-        val_tn_10[2,3] = -1
-        expected_labels_tn_10 = np.ones((6,6), dtype=int)
-        labels_tn_10 = watershed_gt(graph_line, val_tn_10)
-        np.testing.assert_array_equal(labels_tn_10, expected_labels_tn_10)
+        node_values_list.append(-np.array([[0,0,0,1,0,0],
+                               [0,0,1,0,1,0],
+                               [0,1,0,0,0,1],
+                               [0,0,1,0,1,0],
+                               [0,0,0,1,0,0],
+                               [0,0,0,0,0,0]]))
+        expected_labels_list.append(np.ones((6,6), dtype=int))
 
         # Test Case 11
-        val_tn_11 = -np.array([[1,0,0,0,0,0], [0,2,0,0,0,0], [0,0,3,0,0,0], [0,0,0,4,0,0], [0,0,0,0,5,0], [0,0,0,0,0,6]])
-        expected_labels_tn_11 = np.ones((6,6), dtype=int)
-        labels_tn_11 = watershed_gt(graph_line, val_tn_11)
-        np.testing.assert_array_equal(labels_tn_11, expected_labels_tn_11)
+        node_values_list.append(-np.array([[1,0,0,0,0,0], 
+                               [0,2,0,0,0,0], 
+                               [0,0,3,0,0,0], 
+                               [0,0,0,4,0,0], 
+                               [0,0,0,0,5,0], 
+                               [0,0,0,0,0,6]]))
+        expected_labels_list.append(np.ones((6,6), dtype=int))
 
         # Test Case 12
-        val_tn_12 = -np.array([[1,0,0,0,0,0], [0,2,0,0,0,0], [0,0,3,0,0,0], [0,0,0,4,0,0], [0,0,0,0,5,0], [0,0,0,0,0,6]])
-        val_tn_12[1,1] = -3
-        expected_labels_tn_12 = np.ones((6,6), dtype=int)
-        labels_tn_12 = watershed_gt(graph_line, val_tn_12)
-        np.testing.assert_array_equal(labels_tn_12, expected_labels_tn_12)
+        node_values_list.append(-np.array([[1,0,0,0,0,0], 
+                               [0,3,0,0,0,0], 
+                               [0,0,3,0,0,0], 
+                               [0,0,0,4,0,0], 
+                               [0,0,0,0,5,0], 
+                               [0,0,0,0,0,6]]))
+        expected_labels_list.append(np.ones((6,6), dtype=int))
 
         # Test Case 13
-        val_tn_13 = np.rot90(-np.array([[1,0,0,0,0,0], [0,2,0,0,0,0], [0,0,3,0,0,0], [0,0,0,4,0,0], [0,0,0,0,5,0], [0,0,0,0,0,6]]))
-        expected_labels_tn_13 = np.ones((6,6), dtype=int)
-        labels_tn_13 = watershed_gt(graph_line, val_tn_13)
-        np.testing.assert_array_equal(labels_tn_13, expected_labels_tn_13)
-
+        node_values_list.append(np.rot90(-np.array([[1,0,0,0,0,0], 
+                                        [0,2,0,0,0,0], 
+                                        [0,0,3,0,0,0], 
+                                        [0,0,0,4,0,0], 
+                                        [0,0,0,0,5,0], 
+                                        [0,0,0,0,0,6]])))
+        expected_labels_list.append(np.ones((6,6), dtype=int))
+       
+       
         # Test Case 14
-        val_tn_14 = -np.array([[6,0,0,0,0,0], [0,5,0,0,0,0], [0,0,4,0,0,0], [0,0,0,3,0,0], [0,0,0,0,2,0], [0,0,0,0,0,1]])
-        expected_labels_tn_14 = np.ones((6,6), dtype=int)
-        labels_tn_14 = watershed_gt(graph_line, val_tn_14)
-        np.testing.assert_array_equal(labels_tn_14, expected_labels_tn_14)
+        node_values_list.append(-np.array([[6,0,0,0,0,0], 
+                               [0,5,0,0,0,0], 
+                               [0,0,4,0,0,0], 
+                               [0,0,0,3,0,0], 
+                               [0,0,0,0,2,0], 
+                               [0,0,0,0,0,1]]))
+        expected_labels_list.append(np.ones((6,6), dtype=int))
 
         # Test Case 15
-        val_tn_15 = -np.array([[1,2,0,0,0,0], [0,2,3,0,0,0], [0,0,3,4,0,0], [0,0,0,4,5,0], [0,0,0,0,5,6], [0,0,0,0,0,6]])
-        expected_labels_tn_15 = np.ones((6,6), dtype=int)
-        labels_tn_15 = watershed_gt(graph_line, val_tn_15)
-        np.testing.assert_array_equal(labels_tn_15, expected_labels_tn_15)
+        node_values_list.append(-np.array([[1,2,0,0,0,0], 
+                               [0,2,3,0,0,0], 
+                               [0,0,3,4,0,0], 
+                               [0,0,0,4,5,0], 
+                               [0,0,0,0,5,6], 
+                               [0,0,0,0,0,6]]))
+        expected_labels_list.append(np.ones((6,6), dtype=int))
 
+        run_test_set_gt(graph_line, node_values_list, expected_labels_list)
+
+    # def test_circle_graph_temporal(self):
     def test_circle_graph_temporal(self):
-        graph_circle = adj_graphs['circle']
+        graph_line = adj_graphs['circle']
         xi = np.array([0, 5])
-        x_target = np.arange(6)
+        x = np.arange(6)
 
-        # Test Case Circ_1
-        yi_known_T_1 = -np.array([[3,2,1,0,0,0], [0,0,0,0,0,0]]).T
-        val_tn_1 = interpmv(x_target, xi, yi_known_T_1)
-        expected_labels_tn_1 = np.ones((6,6), dtype=int)
-        labels_tn_1 = watershed_gt(graph_circle, val_tn_1)
-        np.testing.assert_array_equal(labels_tn_1, expected_labels_tn_1)
+        node_values_list = []
+        expected_labels_list = []
 
-        # Test Case Circ_2
-        yi_known_T_2 = -np.array([[3,2,1,0,0,0], [0,0,0,1,2,3]]).T
-        val_tn_2 = interpmv(x_target, xi, yi_known_T_2)
-        expected_labels_tn_2 = np.array([[1,1,1,1,2,1], [1,1,1,1,2,1], [1,1,1,2,2,1], [1,1,1,2,2,1], [2,1,2,2,2,1], [2,1,2,2,2,1]])
-        labels_tn_2 = watershed_gt(graph_circle, val_tn_2)
-        np.testing.assert_array_equal(labels_tn_2, expected_labels_tn_2)
+        # Test Case 1
+        yi_1 = -np.array([[3,2,1,0,0,0], [0,0,0,0,0,0]])
+        node_values_list.append(interpmv(x, xi, yi_1))
+        expected_labels_list.append(np.ones((6,6), dtype=int))
 
-        # Test Case Circ_3
-        val_tn_3 = -np.eye(6)
-        expected_labels_tn_3 = np.ones((6,6), dtype=int)
-        labels_tn_3 = watershed_gt(graph_circle, val_tn_3)
-        np.testing.assert_array_equal(labels_tn_3, expected_labels_tn_3)
+        # Test Case 2
+        node_values_list.append(node_values_list[-1].T)
+        expected_labels_list.append(np.ones((6,6), dtype=int))
 
-        # Test Case Circ_4
-        val_tn_4 = -np.eye(6) + -np.eye(6, k=3)
-        expected_labels_tn_4 = np.array([[1,1,2,2,2,1], [1,1,1,2,2,1], [2,1,1,1,2,2], [2,2,1,1,1,2], [2,2,2,1,1,1], [1,2,2,2,1,1]])
-        labels_tn_4 = watershed_gt(graph_circle, val_tn_4)
-        np.testing.assert_array_equal(labels_tn_4, expected_labels_tn_4)
+        # Test Case 3
+        yi_3 = -np.array([[3,2,1,0,0,0], [0,0,0,1,2,3]])
+        node_values_list.append(interpmv(x, xi, yi_3))
+        expected_labels_list.append(np.array([[1,1,1,1,2,1], 
+                                         [1,1,1,1,2,1], 
+                                         [1,1,1,2,2,1], 
+                                         [1,1,1,2,2,2], 
+                                         [2,1,2,2,2,2], 
+                                         [2,1,2,2,2,2]]))
 
-    def test_branched_graph_temporal(self):
-        graph_utree = adj_graphs['utree'] # 7 nodes
-        xi = np.array([0, 5]) # For Test Case Branch_4_simple
-        x_target = np.arange(6) # For Test Case Branch_4_simple
+        # Test Case 4
+        yi_4 = -np.array([[3,2,1,0,0,0], [0,1,2,1,2,3]])
+        node_values_list.append(interpmv(x, xi, yi_4))
+        expected_labels_list.append(np.array([[1,1,1,1,2,1], 
+                                         [1,1,1,1,2,1], 
+                                         [1,1,1,1,2,1], 
+                                         [1,1,3,3,2,2], 
+                                         [2,3,3,3,2,2], 
+                                         [2,3,3,3,2,2]]))
 
-        # Test Case Branch_1
-        val_tn_1 = np.zeros((6,7))
-        val_tn_1[:,0] = -1
-        expected_labels_tn_1 = np.ones((6,7), dtype=int)
-        labels_tn_1 = watershed_gt(graph_utree, val_tn_1)
-        np.testing.assert_array_equal(labels_tn_1, expected_labels_tn_1)
+        # Test Case 5
+        node_values_list.append(-np.eye(6))
+        expected_labels_list.append(np.ones((6,6), dtype=int))
 
-        # Test Case Branch_2
-        val_tn_2 = np.zeros((6,7))
-        val_tn_2[:,3] = -1
-        expected_labels_tn_2 = np.ones((6,7), dtype=int)
-        labels_tn_2 = watershed_gt(graph_utree, val_tn_2)
-        np.testing.assert_array_equal(labels_tn_2, expected_labels_tn_2)
+        # Test Case 6
+        node_values_list.append(-np.eye(6) - np.eye(6, k=1))
+        expected_labels_list.append(np.ones((6,6), dtype=int))
 
-        # Test Case Branch_3
-        val_tn_3 = np.zeros((6,7))
-        val_tn_3[:,[1,3]] = -1
-        expected_labels_tn_3 = np.ones((6,7), dtype=int)
-        labels_tn_3 = watershed_gt(graph_utree, val_tn_3)
-        np.testing.assert_array_equal(labels_tn_3, expected_labels_tn_3)
+        # Test Case 7
+        node_values_list.append(-np.eye(6) - np.eye(6, k=3))
+        expected_labels_list.append(np.array([[1,1,2,2,2,1], 
+                                         [1,1,1,2,2,2], 
+                                         [2,1,1,1,2,2], 
+                                         [2,1,1,1,1,2], 
+                                         [1,1,1,1,1,1], 
+                                         [1,1,1,1,1,1]]))
 
-        # Test Case Branch_4 (simplified)
-        yi_known_T_branch = -np.array([[3,2,1,0,0,0,0], [0,0,0,0,0,0,0]]).T # 7 nodes
-        val_tn_branch_4_simple = interpmv(x_target, xi, yi_known_T_branch)
-        expected_labels_tn_branch_4_simple = np.ones((6,7), dtype=int)
-        labels_tn_4 = watershed_gt(graph_utree, val_tn_branch_4_simple)
-        np.testing.assert_array_equal(labels_tn_4, expected_labels_tn_branch_4_simple)
+        # Test Case 8
+        node_values_list.append(-np.eye(6, k=-3) - np.eye(6, k=3))
+        expected_labels_list.append(np.ones((6,6), dtype=int))
+
+        # Test Case 9
+        node_values_list.append(-np.eye(6,k=-3) - np.eye(6,k=3) - np.eye(6))
+        expected_labels_list.append(np.array([[1,1,2,2,2,1], 
+                                         [1,1,1,2,2,2], 
+                                         [2,1,1,1,2,2], 
+                                         [2,2,1,1,1,2], 
+                                         [2,2,2,1,1,1], 
+                                         [1,2,2,2,1,1]]))
+
+        # Test Case 10
+        node_values_list.append(-np.array([[0,0,0,1,0,0],
+                               [0,0,1,0,1,0],
+                               [0,1,0,0,0,1],
+                               [0,0,1,0,1,0],
+                               [0,0,0,1,0,0],
+                               [0,0,0,0,0,0]]))
+        expected_labels_list.append(np.ones((6,6), dtype=int))
+
+        # Test Case 11
+        node_values_list.append(-np.array([[1,0,0,0,0,0], 
+                               [0,2,0,0,0,0], 
+                               [0,0,3,0,0,0], 
+                               [0,0,0,4,0,0], 
+                               [0,0,0,0,5,0], 
+                               [0,0,0,0,0,6]]))
+        expected_labels_list.append(np.ones((6,6), dtype=int))
+
+        # Test Case 12
+        node_values_list.append(-np.array([[1,0,0,0,0,0], 
+                               [0,3,0,0,0,0], 
+                               [0,0,3,0,0,0], 
+                               [0,0,0,4,0,0], 
+                               [0,0,0,0,5,0], 
+                               [0,0,0,0,0,6]]))
+        expected_labels_list.append(np.ones((6,6), dtype=int))
+
+        # Test Case 13
+        node_values_list.append(np.rot90(-np.array([[1,0,0,0,0,0], 
+                                        [0,2,0,0,0,0], 
+                                        [0,0,3,0,0,0], 
+                                        [0,0,0,4,0,0], 
+                                        [0,0,0,0,5,0], 
+                                        [0,0,0,0,0,6]])))
+        expected_labels_list.append(np.ones((6,6), dtype=int))
+       
+       
+        # Test Case 14
+        node_values_list.append(-np.array([[6,0,0,0,0,0], 
+                               [0,5,0,0,0,0], 
+                               [0,0,4,0,0,0], 
+                               [0,0,0,3,0,0], 
+                               [0,0,0,0,2,0], 
+                               [0,0,0,0,0,1]]))
+        expected_labels_list.append(np.ones((6,6), dtype=int))
+
+        # Test Case 15
+        node_values_list.append(-np.array([[1,2,0,0,0,0], 
+                               [0,2,3,0,0,0], 
+                               [0,0,3,4,0,0], 
+                               [0,0,0,4,5,0], 
+                               [0,0,0,0,5,6], 
+                               [0,0,0,0,0,6]]))
+        expected_labels_list.append(np.ones((6,6), dtype=int))
+
+        run_test_set_gt(graph_line, node_values_list, expected_labels_list)
 
 if __name__ == '__main__':
     unittest.main()
