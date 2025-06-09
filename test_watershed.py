@@ -430,5 +430,86 @@ class TestWatershedGT(unittest.TestCase):
 
         run_test_set_gt(graph_line, node_values_list, expected_labels_list)
 
+    def test_temporal_branch_graph(self):
+        graph_branch = np.zeros((7, 7))
+        graph_branch[0, 1] = 1; graph_branch[1, 0] = 1
+        graph_branch[1, 2] = 1; graph_branch[2, 1] = 1
+        graph_branch[1, 3] = 1; graph_branch[3, 1] = 1
+        graph_branch[3, 4] = 1; graph_branch[4, 3] = 1
+        graph_branch[3, 5] = 1; graph_branch[5, 3] = 1
+        graph_branch[3, 6] = 1; graph_branch[6, 3] = 1
+
+        node_values_list = []
+        expected_labels_list = []
+
+        # Test Case 1: Activate single node at binary branch
+        node_values = np.zeros((6, 7))
+        node_values[:, 0] = -1
+        node_values_list.append(graph_flow(graph_branch, node_values))
+        expected_labels_list.append(np.ones((6, 7), dtype=int))
+
+        # Test Case 2: Activate single node at trinary branch
+        node_values = np.zeros((6, 7))
+        node_values[:, 3] = -1
+        node_values_list.append(node_values)
+        expected_labels_list.append(np.ones((6, 7), dtype=int))
+
+        # Test Case 3: Activate two nodes in the center
+        node_values = np.zeros((6, 7))
+        node_values[:, [1, 3]] = -1
+        node_values_list.append(node_values)
+        expected_labels_list.append(np.ones((6, 7), dtype=int))
+
+        # Test Case 4: Activate two nodes at edges, switching from one set to the other
+        node_values = np.zeros((6, 7))
+        node_values[0, [2, 6]] = -1
+        node_values[-1, [0, 4]] = -1
+        node_values_list.append(graph_flow(graph_branch, node_values))
+        expected_labels_list.append(np.array([[3,3,3,4,4,4,4],
+                                              [1,3,3,3,1,1,4],
+                                              [1,1,1,1,1,1,1],
+                                              [1,1,1,1,2,2,2],
+                                              [1,1,1,2,2,2,2],
+                                              [1,1,1,2,2,2,2]]))
+
+        # Test Case 5: Activate each edge node one at a time
+        node_values = np.zeros((6, 7))
+        node_values[0, 2] = -1
+        node_values[1, 4] = -1
+        node_values[2, 5] = -1
+        node_values[3, 6] = -1
+        node_values[4, 0] = -1
+        node_values_list.append(node_values)
+        expected_labels_list.append(np.array([[1,1,1,1,2,3,1],
+                                              [1,1,1,2,2,3,2],
+                                              [5,3,1,3,2,3,4],
+                                              [5,4,1,4,2,3,4],
+                                              [5,5,5,4,2,3,4],
+                                              [5,5,5,4,2,3,4]]))
+
+        # Test Case 6: Move activation from one end of the tree to the other
+        node_values = np.zeros((6, 7))
+        node_values[0, 0] = -1
+        node_values[1, 1] = -1
+        node_values[2, 2] = -1
+        node_values[3, 1] = -1
+        node_values[4, 3] = -1
+        node_values[5, 4] = -1
+        node_values_list.append(node_values)
+        expected_labels_list.append(np.ones((6, 7), dtype=int))
+
+        # Test Case 7: Move activation with varying amplitude
+        node_values = np.zeros((6, 7))
+        node_values[0, 0] = -1
+        node_values[1, 1] = -2
+        node_values[2, 2] = -3
+        node_values[3, 1] = -4
+        node_values[4, 3] = -3
+        node_values[5, 4] = -2
+        node_values_list.append(node_values)
+        expected_labels_list.append(np.ones((6, 7), dtype=int))
+
+        run_test_set_gt(graph_branch, node_values_list, expected_labels_list)
+        
 if __name__ == '__main__':
     unittest.main()
