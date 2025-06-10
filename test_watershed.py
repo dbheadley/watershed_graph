@@ -430,7 +430,7 @@ class TestWatershedGT(unittest.TestCase):
 
         run_test_set_gt(graph_line, node_values_list, expected_labels_list)
 
-    def test_temporal_branch_graph(self):
+    def test_branch_graph_temporal(self):
         graph_branch = np.zeros((7, 7))
         graph_branch[0, 1] = 1; graph_branch[1, 0] = 1
         graph_branch[1, 2] = 1; graph_branch[2, 1] = 1
@@ -486,30 +486,63 @@ class TestWatershedGT(unittest.TestCase):
                                               [5,4,1,4,2,3,4],
                                               [5,5,5,4,2,3,4],
                                               [5,5,5,4,2,3,4]]))
+    def test_disconnected_graph_temporal(self):
+        graph_disc = np.zeros((7, 7))
+        graph_disc[0, 1] = 1; graph_disc[1, 0] = 1
+        graph_disc[1, 2] = 1; graph_disc[2, 1] = 1
+        graph_disc[0, 2] = 1; graph_disc[2, 0] = 1
+        graph_disc[4, 5] = 1; graph_disc[5, 4] = 1
+        graph_disc[5, 6] = 1; graph_disc[6, 5] = 1
+        graph_disc[4, 6] = 1; graph_disc[6, 4] = 1
 
-        # Test Case 6: Move activation from one end of the tree to the other
+        group_labels = np.array([[1,1,1,2,3,3,3],
+                                 [1,1,1,2,3,3,3],
+                                 [1,1,1,2,3,3,3],
+                                 [1,1,1,2,3,3,3],
+                                 [1,1,1,2,3,3,3],
+                                 [1,1,1,2,3,3,3]])
+        node_values_list = []
+        expected_labels_list = []
+
+        # Test Case 1: No nodes activated
         node_values = np.zeros((6, 7))
-        node_values[0, 0] = -1
-        node_values[1, 1] = -1
-        node_values[2, 2] = -1
-        node_values[3, 1] = -1
-        node_values[4, 3] = -1
-        node_values[5, 4] = -1
         node_values_list.append(node_values)
-        expected_labels_list.append(np.ones((6, 7), dtype=int))
+        expected_labels_list.append(group_labels)
 
-        # Test Case 7: Move activation with varying amplitude
+        # Test Case 2: Activate single node in one subgraph
         node_values = np.zeros((6, 7))
-        node_values[0, 0] = -1
-        node_values[1, 1] = -2
-        node_values[2, 2] = -3
-        node_values[3, 1] = -4
-        node_values[4, 3] = -3
-        node_values[5, 4] = -2
+        node_values[:, 0] = -1
         node_values_list.append(node_values)
-        expected_labels_list.append(np.ones((6, 7), dtype=int))
+        expected_labels_list.append(group_labels)
 
-        run_test_set_gt(graph_branch, node_values_list, expected_labels_list)
-        
+        # Test Case 3: Activate single node in each subgraph
+        node_values = np.zeros((6, 7))
+        node_values[:, 0] = -1
+        node_values[:, 3] = -1
+        node_values[:, 4] = -1
+        node_values_list.append(node_values)
+        expected_labels_list.append(group_labels)
+
+        # Test Case 4: Activate multiple nodes in one subgraph
+        node_values = np.zeros((6, 7))
+        node_values[:, [0, 1]] = -1
+        node_values_list.append(node_values)
+        expected_labels_list.append(group_labels)
+
+        # Test Case 5: Activate nodes in both subgraphs with varying amplitudes
+        node_values = np.zeros((6, 7))
+        node_values[:, 0] = -1
+        node_values[:, 4] = -2
+        node_values[:, 5] = -3
+        node_values_list.append(node_values)
+        expected_labels_list.append(np.array([[2,2,2,3,1,1,1],
+                                              [2,2,2,3,1,1,1],
+                                              [2,2,2,3,1,1,1],
+                                              [2,2,2,3,1,1,1],
+                                              [2,2,2,3,1,1,1],
+                                              [2,2,2,3,1,1,1]]))
+                                              
+        run_test_set_gt(graph_disc, node_values_list, expected_labels_list)
+
 if __name__ == '__main__':
-    unittest.main()
+    unittest.main(verbosity=2)
