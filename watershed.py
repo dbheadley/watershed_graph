@@ -2,7 +2,7 @@ import numpy as np
 import heapq
 import collections
 
-def watershed_g(graph_matrix: np.ndarray, values_n: np.ndarray) -> np.ndarray:
+def watershed_g(graph: np.ndarray, values: np.ndarray) -> np.ndarray:
     """
     Performs watershed segmentation on an undirected graph with static node values.
     Basins are seeded from regional minima plateaus: a plateau is a regional
@@ -12,98 +12,116 @@ def watershed_g(graph_matrix: np.ndarray, values_n: np.ndarray) -> np.ndarray:
 
     Parameters
     ----------
-    graph_matrix: numpy array (N,N)
+    graph: numpy array (N,N)
         An N x N NumPy array representing the adjacency matrix of the graph.
-        graph_matrix[i, j] == 1 if there's an edge between node i and node j,
+        graph[i, j] == 1 if there's an edge between node i and node j,
         0 otherwise. The graph is assumed to be undirected.
-    values_n: numpy array (N,)
+    values: numpy array (N,)
         A 1D NumPy array of shape (N,), where N is the number of nodes.
-        values_n[i] is the 'elevation' of node i.
+        values[i] is the 'elevation' of node i.
     
 
     Returns
     -------
-    labels_n: numpy array (N,)
-        A 1D NumPy array of shape (N,), where each element labels_n[i]
+    labels: numpy array (N,)
+        A 1D NumPy array of shape (N,), where each element labels[i]
         is an integer representing the basin ID assigned to node i.
         Basin IDs start from 1.
     """
-    if not isinstance(values_n, np.ndarray) or not isinstance(graph_matrix, np.ndarray):
-        raise TypeError("Inputs 'values_n' and 'graph_matrix' must be NumPy arrays.")
-    if values_n.ndim != 1:
-        raise ValueError(f"Input 'values_n' must be a 1D array (N,), but got {values_n.ndim} dimensions.")
+
+    # validate inputs
+    if not isinstance(values, np.ndarray) or not isinstance(graph, np.ndarray):
+        raise TypeError("Inputs 'values' and 'graph' must be NumPy arrays.")
+    if values.ndim != 1:
+        raise ValueError(f"Input 'values' must be a 1D array (N,), but got {values.ndim} dimensions.")
     
-    N = values_n.shape[0]
+    N = values.shape[0]
     if N == 0: 
         return np.array([], dtype=int)
 
-    if graph_matrix.ndim != 2 or graph_matrix.shape != (N, N):
-        raise ValueError(f"Input 'graph_matrix' must be an N x N ({N}x{N}) array, but got shape {graph_matrix.shape}.")
+    if graph.ndim != 2 or graph.shape != (N, N):
+        raise ValueError(f"Input 'graph' must be an N x N ({N}x{N}) array, but got shape {graph.shape}.")
 
-    labels_n = np.zeros(N, dtype=int)
+    # Initialize labels and priority queue
+    labels = np.zeros(N, dtype=int)
     priority_queue = [] # Stores (value, entry_count, node_index)
     entry_count = 0
     current_basin_id = 0
 
+    # Get neighborhood for each node from adjacency matrix
     adj_list = [[] for _ in range(N)]
-    rows, cols = np.where(graph_matrix == 1)
+    rows, cols = np.where(graph == 1)
     for i, j in zip(rows, cols):
         adj_list[i].append(j)
 
     # --- Step 1: Marker Identification (Regional Minima Plateaus) ---
-    sorted_node_indices = sorted(range(N), key=lambda i: (values_n[i], i))
+    # Sort nodes by their values, then by index to ensure stable ordering
+    sorted_node_indices = sorted(range(N), key=lambda i: (values[i], i))
 
     for n_start_plateau in sorted_node_indices:
-        if labels_n[n_start_plateau] == 0: 
-            current_plateau_value = values_n[n_start_plateau]
-            
+        if labels[n_start_plateau] == 0: 
+
+            current_plateau_value = values[n_start_plateau]
             plateau_nodes = [] 
             visited_for_this_plateau_search = set() 
             
-            # BFS to find all spatially connected nodes with the same value as current_plateau_value
+            # use breadth first search to find all spatially connected nodes with 
+            # the same value as current_plateau_value
             bfs_plateau_q = collections.deque([n_start_plateau])
             visited_for_this_plateau_search.add(n_start_plateau)
-
             while bfs_plateau_q: 
                 curr_n = bfs_plateau_q.popleft()
                 plateau_nodes.append(curr_n) 
                 
                 for neighbor_n in adj_list[curr_n]:
+                    # keep adding nodes to plateau so long as they are connected and
+                    # have the same value
                     if neighbor_n not in visited_for_this_plateau_search and \
-                       values_n[neighbor_n] == current_plateau_value:
+                       values[neighbor_n] == current_plateau_value:
                         visited_for_this_plateau_search.add(neighbor_n)
                         bfs_plateau_q.append(neighbor_n)
             
             # Check if this identified plateau is a true regional minimum
+            # iterates over all nodes in in the plateau and checks that
+            # each of their neighbors is at a higher value. If the neighbor
+            # is lower in value, then the plateau is not a regional minimum and 
+            # is discarded.
             is_regional_minimum_plateau = True
             for p_n in plateau_nodes: 
                 for neighbor_n_check in adj_list[p_n]:
-                    if neighbor_n_check not in visited_for_this_plateau_search: # If neighbor is outside the current plateau
-                        if values_n[neighbor_n_check] <= current_plateau_value: 
+                    if neighbor_n_check not in visited_for_this_plateau_search:
+                        if values[neighbor_n_check] <= current_plateau_value: 
                             is_regional_minimum_plateau = False; break
                 if not is_regional_minimum_plateau: break
             
+            # If the plateau is a regional minimum, then all nodes contained within
+            # it are given the same unique label and added to the priority queue for
+            # subsequent flooding.
             if is_regional_minimum_plateau:
                 current_basin_id += 1
                 for p_n_label in plateau_nodes: 
-                    if labels_n[p_n_label] == 0: 
-                        labels_n[p_n_label] = current_basin_id
-                        heapq.heappush(priority_queue, (values_n[p_n_label], entry_count, p_n_label))
+                    if labels[p_n_label] == 0: 
+                        labels[p_n_label] = current_basin_id
+                        heapq.heappush(priority_queue, (values[p_n_label], entry_count, p_n_label))
                         entry_count += 1
     
     # --- Step 2: Flooding Phase ---
+    # The priority queue stores nodes in order of the lowest valued, then when they were added
+    # to the queue, and finally the node index. Only their values and when they were added to 
+    # the queue is relevant to the sorting. The final entry, their label, is what we need to 
+    # flood outward.
     while priority_queue:
-        val_u, _, node_u = heapq.heappop(priority_queue) # val_u is values_n[node_u]
-        basin_id_u = labels_n[node_u]
+        _, _, node_u = heapq.heappop(priority_queue)
+        basin_id_u = labels[node_u]
         if basin_id_u == 0: 
             continue
 
         for node_v_idx in adj_list[node_u]:
-            if labels_n[node_v_idx] == 0: 
-                labels_n[node_v_idx] = basin_id_u
-                heapq.heappush(priority_queue, (values_n[node_v_idx], entry_count, node_v_idx))
+            if labels[node_v_idx] == 0: 
+                labels[node_v_idx] = basin_id_u
+                heapq.heappush(priority_queue, (values[node_v_idx], entry_count, node_v_idx))
                 entry_count += 1
-    return labels_n
+    return labels
 
 def watershed_gt(graph_matrix: np.ndarray, values_tn: np.ndarray) -> np.ndarray:
     """
